@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 if [ $# != 1 ]; then
   echo "This script requires exactly one argument as the target string"
   exit 1

@@ -13,7 +13,7 @@ import csv
 import sys
 import os
 
-import tree, linreg
+import tree, linreg, tree_dp
 import overfit
 import inclusion
 import invert
@@ -140,7 +140,8 @@ def prepare_outfile(outfile, attack, iters):
     except IOError: #file does not exist
         with open(outfile, 'w') as f:
             if attack == 'inc':
-                f.write('rseed,r_emp,r_cv,train_TRAIN,test_TRAIN\n')
+                f.write('rseed,r_emp,r_cv,train_TRAIN,test_TRAIN,'
+                        'attack_accuracy\n')
             else:
                 f.write('rseed,r_emp,r_cv,train_correct,test_correct\n')
         return 0
@@ -188,8 +189,15 @@ def iterate_inclusion_and_write(algorithm, X, y, one_error, r_emp, r_cv, iters, 
             model = algorithm(train_X, train_y)
             train_TRAIN = sklearn_do_inclusion(model, train_X, train_y, r_emp, adv_r_cv)
             test_TRAIN = sklearn_do_inclusion(model, test_X, test_y, r_emp, adv_r_cv)
+
+            len_train = train_X.shape[0]
+            len_test = test_X.shape[0]
+
+            attack_accuracy = (train_TRAIN * len_train + (
+                (1 - test_TRAIN) * len_test)) / (len_train + len_test)
             
-            output = '{},{:.4f},{:.4f},{:.6f},{:.6f}\n'.format(rseed, r_emp, r_cv, train_TRAIN, test_TRAIN)
+            output = '{},{:.4f},{:.4f},{:.6f},{:.6f},{:.6f}\n'.format(
+                rseed, r_emp, r_cv, train_TRAIN, test_TRAIN, attack_accuracy)
             f.write(output)
     
     print('Result written to {}'.format(outfile))
@@ -342,11 +350,12 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='By default, computes the empirical and cross validation errors without doing anything else. Use --inc for membership inference, --inv for attribute inference, and --red for reduction.')
     parser.add_argument('data', choices=['eyedata', 'iwpc', 'netflix'], help='Specify the data to use')
-    parser.add_argument('model', choices=['tree', 'linreg'], help='Specify the machine learning algorithm')
+    parser.add_argument('model', choices=['tree', 'tree_dp', 'linreg'], help='Specify the machine learning algorithm')
     parser.add_argument('param', type=float, help='Depth of the decision tree, or lambda (alpha) in Ridge linear regression')
     parser.add_argument('--target', help='Name of the target attribute; necessary for attribute inference and reduction; ignored otherwise')
     parser.add_argument('--one-error', action='store_true', help='Assume that the adversary does not know r_cv')
-    parser.add_argument('--iters', type=int, metavar='n', default=100, help='Number of iterations to use; each iteration uses a different random seed for splitting the data into training and test sets')
+    parser.add_argument('--iters', type=int, metavar='n', default=5,
+                        help='Number of iterations to use; each iteration uses a different random seed for splitting the data into training and test sets')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--inc', type=float, nargs=2, metavar=('r_emp', 'r_cv'), help='Perform membership inference using r_emp and r_cv as training set and test set standard errors, respectively')
     group.add_argument('--inv', type=float, nargs=2, metavar=('r_emp', 'r_cv'), help='Perform attribute inference using r_emp and r_cv as training set and test set standard errors, respectively')
@@ -373,12 +382,18 @@ if __name__ == '__main__':
         X, y, featnames = load_netflix(data_folder)
     
     if model_type == 'tree':
-        param = int(param)
-        max_depth = param
-        algorithm = lambda X, y: tree.sklearn_train_tree(X, y, max_depth)
+        param = float(param)
+        budget = param
+        algorithm = lambda X, y: tree.sklearn_train_tree(X, y, budget)
+    if model_type == 'tree_dp':
+        param = float(param)
+        budget = param
+        algorithm = lambda X, y: tree_dp.train_tree_dp(X, y, budget)
     if model_type == 'linreg':
         alpha = param
         algorithm = lambda X, y: linreg.sklearn_train_linreg(X, y, alpha)
+
+    budget_filename = str(param).replace('.', '')
     
     #argparse ensures that at most one of {inc, inv, red} will be not None
     if inc is not None or inv is not None or red is not None:
@@ -387,7 +402,7 @@ if __name__ == '__main__':
         if inc is not None:
             r_emp = inc[0]
             r_cv = inc[1]
-            outfile = '{}/{}/membership/{}/{}-{}.csv'.format(results_folder, dataset, test_error, model_type, param)
+            outfile = '{}/{}/membership/{}/{}-{}.csv'.format(results_folder, dataset, test_error, model_type, budget_filename)
             conditional_makedirs(outfile)
             iterate_inclusion_and_write(algorithm, X, y, one_error, r_emp, r_cv, iters, outfile)
         
@@ -400,7 +415,7 @@ if __name__ == '__main__':
             if inv is not None:
                 r_emp = inv[0]
                 r_cv = inv[1]
-                outfile = '{}/{}/attribute/{}/{}/{}-{}.csv'.format(results_folder, dataset, target_str, test_error, model_type, param)
+                outfile = '{}/{}/attribute/{}/{}/{}-{}.csv'.format(results_folder, dataset, target_str, test_error, model_type, budget_filename)
                 conditional_makedirs(outfile)
                 iterate_inversion_and_write(algorithm, X, y, target_str, featnames, one_error, r_emp, r_cv, iters, outfile)
     
@@ -408,7 +423,7 @@ if __name__ == '__main__':
             else:
                 r_emp = red[0]
                 r_cv = red[1]
-                outfile = '{}/{}/reduction/{}/{}/{}-{}.csv'.format(results_folder, dataset, target_str, test_error, model_type, param)
+                outfile = '{}/{}/reduction/{}/{}/{}-{}.csv'.format(results_folder, dataset, target_str, test_error, model_type, budget_filename)
                 conditional_makedirs(outfile)
                 iterate_reduction_and_write(algorithm, X, y, target_str, featnames, one_error, r_emp, r_cv, iters, outfile)
     
@@ -419,4 +434,4 @@ if __name__ == '__main__':
         outfile = '{}/{}/{}-errors.txt'.format(results_folder, dataset, model_type)
         conditional_makedirs(outfile)
         with open(outfile, 'a') as f:
-            f.write('{} {:.4f} {:.4f}\n'.format(param, r_emp, r_cv))
+            f.write('{:.2f} {:.4f} {:.4f}\n'.format(param, r_emp, r_cv))

@@ -51,7 +51,8 @@ def summarize(path, model_type):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Creates a summary of the result files created by main.py')
     parser.add_argument('path', help='folder containing the result files')
-    parser.add_argument('model', choices=['tree', 'linreg', 'knn'], help='machine learning model used to create the result files')
+    parser.add_argument('model', choices=['tree', 'tree_dp', 'linreg', 'knn'],
+        help='machine learning model used to create the result files')
     args = parser.parse_args()
     
     path = args.path
