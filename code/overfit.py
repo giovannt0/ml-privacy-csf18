@@ -19,7 +19,7 @@ validation. algorithm is a function that takes in X and y and returns a model.
 '''
 def get_cross_validation_error(algorithm, X, y):
     errors = []
-    if len(y) > 1000:
+    if len(y) > 10000:
         print('Data contains more than 10000 rows. Using 5-fold cross '
               'validation...')
         splitter = KFold(n_splits=5, shuffle=True, random_state=4294967295)
@@ -33,7 +33,7 @@ def get_cross_validation_error(algorithm, X, y):
         test_X, test_y = X[test_indices], y[test_indices]
         
         model = algorithm(train_X, train_y)
-        pred = np.asarray(model.predict(test_X))
+        pred = np.asarray(model.predict(test_X)).reshape(-1, 1)[0]
         mse = mean_squared_error(test_y, pred)
         errors.append(mse)
     

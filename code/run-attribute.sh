@@ -6,9 +6,9 @@ fi
 
 target=$1
 
-cat ../results-sklearn/iwpc/tree-errors.txt | while read line; do
+cat ../results-sklearn/synthetic_B/tree_dp-errors.txt | while read line; do
   set $line
-  echo "depth = $1"
-  time python main.py iwpc tree $1 --inv $2 $3 --target $target --one-error
+  echo "---------------------------------------------------------------    budget = $1"
+  time python main.py synthetic_B tree_dp $1 --inv $2 $3 --target $target --one-error
 done
-python summarize.py ../results-sklearn/iwpc/attribute/$target/unknown-test-error tree
+python summarize.py ../results-sklearn/synthetic_B/attribute/$target/unknown-test-error tree_dp

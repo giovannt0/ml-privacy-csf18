@@ -1,10 +1,11 @@
 from __future__ import division, print_function
 
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.datasets import load_svmlight_file
-from sklearn.preprocessing import scale
+from sklearn.preprocessing import scale, MinMaxScaler
 from scipy import sparse
 
 import warnings
@@ -319,6 +320,20 @@ def load_iwpc(data_folder):
     featnames = np.array(dv.get_feature_names())
     return X, y, featnames
 
+def load_synthetic_B(data_folder):
+    datafile = '{}/synthetic_B.csv'.format(data_folder)
+    data = pd.read_csv(datafile, nrows=5000)
+    y = data[data.columns[-2]].values
+    data.drop(columns=['company_suffers_a_loss', 'cost_of_loss'],
+              inplace=True)
+    dv = DictVectorizer()
+    X = dv.fit_transform(data.to_dict('records'))
+    scaler = MinMaxScaler(feature_range=(-1, 1))
+    y = np.asarray(scaler.fit_transform(y.reshape(-1, 1))).ravel()
+    featnames = np.array(dv.get_feature_names())
+    return X, y, featnames
+
+
 def load_netflix(data_folder):
     datafile = '{}/netflix.npz'.format(data_folder)
     rated_movie = 11092 #ID of movie whose rating the model will predict
@@ -349,12 +364,14 @@ if __name__ == '__main__':
     results_folder = '../results-sklearn'
     
     parser = argparse.ArgumentParser(description='By default, computes the empirical and cross validation errors without doing anything else. Use --inc for membership inference, --inv for attribute inference, and --red for reduction.')
-    parser.add_argument('data', choices=['eyedata', 'iwpc', 'netflix'], help='Specify the data to use')
+    parser.add_argument('data', choices=['eyedata', 'iwpc', 'netflix',
+                                         'synthetic_B'],
+                        help='Specify the data to use')
     parser.add_argument('model', choices=['tree', 'tree_dp', 'linreg'], help='Specify the machine learning algorithm')
     parser.add_argument('param', type=float, help='Depth of the decision tree, or lambda (alpha) in Ridge linear regression')
     parser.add_argument('--target', help='Name of the target attribute; necessary for attribute inference and reduction; ignored otherwise')
     parser.add_argument('--one-error', action='store_true', help='Assume that the adversary does not know r_cv')
-    parser.add_argument('--iters', type=int, metavar='n', default=5,
+    parser.add_argument('--iters', type=int, metavar='n', default=100,
                         help='Number of iterations to use; each iteration uses a different random seed for splitting the data into training and test sets')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--inc', type=float, nargs=2, metavar=('r_emp', 'r_cv'), help='Perform membership inference using r_emp and r_cv as training set and test set standard errors, respectively')
@@ -380,6 +397,8 @@ if __name__ == '__main__':
         X, y, featnames = load_iwpc(data_folder)
     if dataset == 'netflix':
         X, y, featnames = load_netflix(data_folder)
+    if dataset == 'synthetic_B':
+        X, y, featnames = load_synthetic_B(data_folder)
     
     if model_type == 'tree':
         param = float(param)
